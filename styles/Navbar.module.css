@@ -1,0 +1,28 @@
+.container {
+    overflow: hidden;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+  }
+
+.inner a {
+
+text-decoration: none;
+}
+
+.inner a:hover {
+text-decoration: none;
+color: #808080;
+}
+
+.inner {
+    float: left;
+    margin: 3vmin;
+    padding-right: 1vmin;
+}
+
+.text {
+    padding: 100;
+    font-size: 3vmin;
+}

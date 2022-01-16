@@ -1,0 +1,50 @@
+.bubble {
+    background-color:  #66ccff;
+    width: 5vmin;
+    height: 5vmin;
+    border-radius: 2.5vmin;
+    display: inline-block;
+    margin: 0 0.1vmin;
+    opacity: 0.85;
+  }
+
+  .wrap {
+    background-color:  #00aaff;
+    width: 5vmin;
+    height: 5vmin;
+    display: inline-block;
+    margin: 0 0.1vmin;
+    opacity: 0.95;
+  }
+
+  .poppedwrap {
+    background-color:  #00aaff;
+    width: 5vmin;
+    height: 5vmin;
+    display: inline-block;
+    margin: 0 0.1vmin;
+    opacity: 0.1;
+  }
+
+  .popped {
+    background-color: #5fdce5;
+    width: 5vmin;
+    height: 5vmin;
+    border-radius: 2.5vmin;
+    display: inline-block;
+    margin: 0 0.1vmin;
+    opacity: 0.2;
+  }
+
+  .container {
+    max-width: 50vmin;
+    max-height: 35vmin;
+    z-index: 2;
+    position: fixed;
+    transform: translate(-50%, 0);
+  }
+
+  .container p {
+    text-align: center;
+  }
+  
