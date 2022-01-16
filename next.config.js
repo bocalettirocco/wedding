@@ -1,4 +1,7 @@
 module.exports = {
+  experimental: {
+    outputStandalone: true,
+  },
   reactStrictMode: true,
   webpack(config, options) {
     const { isServer } = options

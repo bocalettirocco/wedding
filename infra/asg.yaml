@@ -1,0 +1,87 @@
+Parameters:
+  VPCId:
+    Type: String
+    Default: vpc-0803e200e79d74cd7
+  AMI: 
+    Type: String
+    Default: ami-08e4e35cccc6189f4
+Resources:
+  ASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - CustomPrivate1A
+        - CustomPrivate1B
+      LaunchConfigurationName: !Ref LaunchConfig
+      MinSize: '1'
+      MaxSize: '2'
+      DesiredCapacity: '1'
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
+      AssociatePublicIpAddress: False
+      ImageId: !Ref AMI
+      InstanceMonitoring: false
+      InstanceType: t3.micro
+      KeyName: linux
+      LaunchConfigurationName: wedding
+      SecurityGroups: 
+        - !Ref EC2SecurityGroup
+      UserData: !Base64 |
+        #!/bin/bash
+        yum install -y docker
+        curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        git clone https://github.com/bocalettirocco/wedding.git
+        cd wedding
+        docker-compose up -d
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: ec2
+      GroupName: ServerSG
+      SecurityGroupEgress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      VpcId: !Ref VPCId
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: load balancer
+      GroupName: LoadBalancerSG
+      SecurityGroupEgress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 65535
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags: 
+        - Tag
+      VpcId: !Ref VPCId
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: wedding
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+      SubnetMappings: 
+        - SubnetMapping
+      Subnets: 
+        - String
+      Tags: 
+        - Tag
+      Type: String
