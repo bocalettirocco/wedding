@@ -2,24 +2,47 @@ Parameters:
   VPCId:
     Type: String
     Default: vpc-0803e200e79d74cd7
-  AMI: 
+  CustomPublic1A:
     Type: String
-    Default: ami-08e4e35cccc6189f4
+    Default: subnet-0b2128d7be72c1117
+  CustomPublic1B:
+    Type: String
+    Default: subnet-0d1114dfb8b15a386
+  CustomPrivate1A:
+    Type: String
+    Default: subnet-048c546e5bf535b52
+  CustomPrivate1B:
+    Type: String
+    Default: subnet-0a510928fdf3fd8bd
+  AMI:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  CertARN:
+    Type: String
+    Default: arn:aws:acm:us-east-1:058448180656:certificate/92bc25bf-d3a1-4855-b761-dba79ca98260
 Resources:
   ASG:
+    DependsOn: CreateNAT
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
       VPCZoneIdentifier:
-        - CustomPrivate1A
-        - CustomPrivate1B
+        - !Ref CustomPrivate1A
+        - !Ref CustomPrivate1B
       LaunchConfigurationName: !Ref LaunchConfig
+      TargetGroupARNs:
+        - !Ref DefaultTargetGroup
       MinSize: '1'
       MaxSize: '2'
-      DesiredCapacity: '1'
+      DesiredCapacity: '2'
+
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
   LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties: 
       AssociatePublicIpAddress: False
+      IamInstanceProfile: arn:aws:iam::058448180656:instance-profile/wedding
       ImageId: !Ref AMI
       InstanceMonitoring: false
       InstanceType: t3.micro
@@ -27,14 +50,33 @@ Resources:
       LaunchConfigurationName: wedding
       SecurityGroups: 
         - !Ref EC2SecurityGroup
-      UserData: !Base64 |
+      UserData: !Base64 | 
         #!/bin/bash
-        yum install -y docker
+        sleep 120
+        yum install -y docker git
+        systemctl enable docker.service
+        systemctl start docker.service
         curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
         sudo chmod +x /usr/local/bin/docker-compose
         git clone https://github.com/bocalettirocco/wedding.git
         cd wedding
         docker-compose up -d
+        sleep 120
+        /opt/aws/bin/cfn-signal --stack=wedding --resource=ASG
+  DefaultTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: '/'
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200'
+      Port: 3000
+      Protocol: HTTP
+      VpcId: !Ref VPCId
 
   EC2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -62,14 +104,12 @@ Resources:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 65535
-          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          CidrIp: 10.0.0.0/16
       SecurityGroupIngress: 
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
-      Tags: 
-        - Tag
       VpcId: !Ref VPCId
 
   LoadBalancer:
@@ -78,10 +118,57 @@ Resources:
       Name: wedding
       SecurityGroups: 
         - !Ref ALBSecurityGroup
-      SubnetMappings: 
-        - SubnetMapping
       Subnets: 
-        - String
-      Tags: 
-        - Tag
-      Type: String
+        - !Ref CustomPublic1A
+        - !Ref CustomPublic1B
+      Type: application
+
+  HTTPlistener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: "redirect"
+          RedirectConfig:
+            Protocol: "HTTPS"
+            Port: 443
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: "HTTP"
+
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      Certificates: 
+        - CertificateArn: !Ref CertARN
+      DefaultActions: 
+        - Type: forward
+          TargetGroupArn: !Ref DefaultTargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+
+  Route53Record:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt LoadBalancer.DNSName
+        EvaluateTargetHealth: True
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+      HostedZoneName: mariodev.org.
+      Name: wedding.mariodev.org
+      Type: A
+
+  CreateNAT:
+    Type: Custom::reNat
+    Properties:
+      ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:reNat
+
+  RemoveNAT:
+    DependsOn: ASG
+    Type: Custom::deNat
+    Properties:
+      ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:deNat
