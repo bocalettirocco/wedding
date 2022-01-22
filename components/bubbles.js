@@ -9,7 +9,10 @@ export default function Bubbles() {
     }
 
     return(
-        <div className={styles.container}>{rows}<p>Click to pop!</p></div>
+        <div className={styles.container}>
+            {rows}
+            <p>Click to pop!</p>
+        </div>
       )
 }
 

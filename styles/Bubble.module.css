@@ -1,4 +1,4 @@
-.bubble {
+  .bubble {
     background-color:  #66ccff;
     width: 5vmin;
     height: 5vmin;
@@ -37,6 +37,7 @@
   }
 
   .container {
+    padding-left: 1.5vmin;
     max-width: 50vmin;
     max-height: 35vmin;
     z-index: 2;

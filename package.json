@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "file-loader": "^6.2.0",
-    "next": "12.0.7",
+    "next": "canary",
     "react": "17.0.2",
     "react-dom": "17.0.2",
     "url-loader": "^4.1.1",
@@ -17,6 +17,6 @@
   },
   "devDependencies": {
     "eslint": "8.6.0",
-    "eslint-config-next": "12.0.7"
+    "eslint-config-next": "12.0.8"
   }
 }
