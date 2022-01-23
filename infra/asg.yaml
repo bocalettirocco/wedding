@@ -33,33 +33,70 @@ Resources:
         - !Ref DefaultTargetGroup
       MinSize: '1'
       MaxSize: '2'
-      DesiredCapacity: '2'
+      DesiredCapacity: '1'
 
     CreationPolicy:
       ResourceSignal:
         Timeout: PT10M
+
+  Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 'ssm:GetParameter'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/NEXT*'
+              - Effect: Allow
+                Action: 'kms:Decrypt'
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      Roles: 
+        - !Ref Role
+
   LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties: 
       AssociatePublicIpAddress: False
-      IamInstanceProfile: arn:aws:iam::058448180656:instance-profile/wedding
+      IamInstanceProfile: !Ref InstanceProfile
       ImageId: !Ref AMI
       InstanceMonitoring: false
       InstanceType: t3.micro
       KeyName: linux
-      LaunchConfigurationName: wedding
+      LaunchConfigurationName: wedding3
       SecurityGroups: 
         - !Ref EC2SecurityGroup
       UserData: !Base64 | 
         #!/bin/bash
         sleep 120
-        yum install -y docker git
+        yum install -y docker git jq
         systemctl enable docker.service
         systemctl start docker.service
         curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
         sudo chmod +x /usr/local/bin/docker-compose
         git clone https://github.com/bocalettirocco/wedding.git
         cd wedding
+        REGION=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
+        NEXT_PUBLIC_API_MAP_KEY=$(aws ssm get-parameter --region $REGION \
+          --name "NEXT_PUBLIC_API_MAP_KEY" \
+          --with-decryption | \
+          jq -r '.Parameter | .Value') \
         docker-compose up -d
         sleep 120
         /opt/aws/bin/cfn-signal --stack=wedding --resource=ASG

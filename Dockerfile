@@ -4,7 +4,7 @@ FROM node:16-alpine AS deps
 RUN apk add --no-cache git libc6-compat
 WORKDIR /app
 COPY package.json ./
-RUN npm install --only=prod
+RUN npm install --only=prod --legacy-peer-deps
 RUN npm install sharp
 
 # Rebuild the source code only when needed
