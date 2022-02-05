@@ -1,8 +1,15 @@
+version: '3.8'
 services:
   web:
     build: 
       context: .
-    ports:
-      - 3000:3000
     environment:
       - NEXT_PUBLIC_API_MAP_KEY
+  nginx:
+    build:
+      context: ./nginx/
+    ports:
+      - 443:443
+      - 80:80
+    volumes:
+      - $PWD/certs:/etc/nginx/certs

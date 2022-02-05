@@ -1,0 +1,211 @@
+Parameters:
+  VPCId:
+    Type: String
+    Default: vpc-0803e200e79d74cd7
+  CustomPublic1A:
+    Type: String
+    Default: subnet-0b2128d7be72c1117
+  CustomPublic1B:
+    Type: String
+    Default: subnet-0d1114dfb8b15a386
+  CustomPrivate1A:
+    Type: String
+    Default: subnet-048c546e5bf535b52
+  CustomPrivate1B:
+    Type: String
+    Default: subnet-0a510928fdf3fd8bd
+  AMI:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  CertARN:
+    Type: String
+    Default: arn:aws:acm:us-east-1:058448180656:certificate/ab30357f-04fa-482b-9632-e510c4df8747
+Resources:
+  ASG:
+    DependsOn: CreateNAT
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref CustomPrivate1A
+        - !Ref CustomPrivate1B
+      LaunchConfigurationName: !Ref LaunchConfig
+      TargetGroupARNs:
+        - !Ref DefaultTargetGroup
+      MinSize: '1'
+      MaxSize: '2'
+      DesiredCapacity: '1'
+
+    CreationPolicy:
+      ResourceSignal:
+        Timeout: PT10M
+
+  Role:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 'ssm:GetParameter'
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/NEXT*'
+              - Effect: Allow
+                Action: 'kms:Decrypt'
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties: 
+      Roles: 
+        - !Ref Role
+
+  LaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
+      AssociatePublicIpAddress: False
+      IamInstanceProfile: !Ref InstanceProfile
+      ImageId: !Ref AMI
+      InstanceMonitoring: false
+      InstanceType: t3.micro
+      KeyName: linux
+      LaunchConfigurationName: wedding
+      SecurityGroups: 
+        - !Ref EC2SecurityGroup
+      UserData: !Base64 | 
+        #!/bin/bash
+        sleep 120
+        yum install -y docker git jq
+        systemctl enable docker.service
+        systemctl start docker.service
+        curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        git clone https://github.com/bocalettirocco/wedding.git
+        cd wedding
+        REGION=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
+        export NEXT_PUBLIC_API_MAP_KEY=$(aws ssm get-parameter --region $REGION \
+          --name "NEXT_PUBLIC_API_MAP_KEY" \
+          --with-decryption | jq -r '.Parameter | .Value')
+        printf "NEXT_PUBLIC_API_MAP_KEY=$NEXT_PUBLIC_API_MAP_KEY" > .env.local
+        docker-compose up -d
+        sleep 30
+        /opt/aws/bin/cfn-signal --stack=wedding --resource=ASG
+  DefaultTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      HealthCheckIntervalSeconds: 15
+      HealthCheckPath: '/'
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200'
+      Port: 3000
+      Protocol: HTTP
+      VpcId: !Ref VPCId
+
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: ec2
+      GroupName: ServerSG
+      SecurityGroupEgress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+      VpcId: !Ref VPCId
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: load balancer
+      GroupName: LoadBalancerSG
+      SecurityGroupEgress: 
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 65535
+          CidrIp: 10.0.0.0/16
+      SecurityGroupIngress: 
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPCId
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: wedding
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+      Subnets: 
+        - !Ref CustomPublic1A
+        - !Ref CustomPublic1B
+      Type: application
+
+  HTTPlistener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: "redirect"
+          RedirectConfig:
+            Protocol: "HTTPS"
+            Port: 443
+            Host: "#{host}"
+            Path: "/#{path}"
+            Query: "#{query}"
+            StatusCode: "HTTP_301"
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: "HTTP"
+
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      Certificates: 
+        - CertificateArn: !Ref CertARN
+      DefaultActions: 
+        - Type: forward
+          TargetGroupArn: !Ref DefaultTargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 443
+      Protocol: HTTPS
+
+  Route53Record:
+    Type: AWS::Route53::RecordSet
+    Properties: 
+      AliasTarget: 
+        DNSName: !GetAtt LoadBalancer.DNSName
+        EvaluateTargetHealth: True
+        HostedZoneId: !GetAtt LoadBalancer.CanonicalHostedZoneID
+      HostedZoneName: mariodev.org.
+      Name: wedding.mariodev.org
+      Type: A
+
+  CreateNAT:
+    Type: Custom::reNat
+    Properties:
+      ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:reNat
+
+  RemoveNAT:
+    DependsOn: ASG
+    Type: Custom::deNat
+    Properties:
+      ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:deNat
