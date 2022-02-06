@@ -146,9 +146,8 @@ Resources:
           Value: wedding
 
   AttachElasticIP:
-    AttachElasticIP:
-      Type: Custom::AttachElasticIP
-      Properties:
-        ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:AttachElasticIP
-        app: wedding
-        AllocationId: !GetAtt ElasticIP.AllocationId
+    Type: Custom::AttachElasticIP
+    Properties:
+      ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:AttachElasticIP
+      app: wedding
+      AllocationId: !GetAtt ElasticIP.AllocationId
