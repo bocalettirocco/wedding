@@ -63,7 +63,7 @@ Resources:
   LaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties: 
-      AssociatePublicIpAddress: False
+      AssociatePublicIpAddress: True
       IamInstanceProfile: !Ref InstanceProfile
       ImageId: !Ref AMI
       InstanceMonitoring: false
@@ -87,7 +87,7 @@ Resources:
           --with-decryption | jq -r '.Parameter | .Value')
         aws ssm get-parameter --region $REGION \
           --name "NEXT_WEDDING_CERT_KEY" \
-          --with-decryption | jq -r '.Parameter | .Value' | base64 -d | gunzip > www.erinandmario.bocaletti.com.key
+          --with-decryption | jq -r '.Parameter | .Value' | base64 -d | gunzip > certs/www.erinandmario.bocaletti.com.key
         printf "NEXT_PUBLIC_API_MAP_KEY=$NEXT_PUBLIC_API_MAP_KEY" > .env.local
         docker-compose up -d
         /opt/aws/bin/cfn-signal --stack=wedding --resource=ASG
@@ -135,6 +135,7 @@ Resources:
       HostedZoneName: bocaletti.com.
       Name: erinandmario.bocaletti.com
       Type: A
+      TTL: 900
 
   ElasticIP:
     Type: AWS::EC2::EIP
@@ -144,9 +145,10 @@ Resources:
         - Key: app
           Value: wedding
 
-# AttachElasticIP:
-#   AttachElasticIP:
-#     Type: Custom::AttachElasticIP
-#     Properties:
-#       ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:AttachElasticIP
-#       app: wedding
+  AttachElasticIP:
+    AttachElasticIP:
+      Type: Custom::AttachElasticIP
+      Properties:
+        ServiceToken: !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:AttachElasticIP
+        app: wedding
+        AllocationId: !GetAtt ElasticIP.AllocationId

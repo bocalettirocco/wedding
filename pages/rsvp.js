@@ -18,7 +18,7 @@ export default function RSVP() {
           <h1 className={styles.title}>
             RSVP
           </h1>
-          <p className={styles.text}>Please RSVP by September 15th so we can have an accurate headcount.</p>       
+          <p className={styles.text}>Please check back soon for RSVP information.</p>       
         </main>
       </div>
     )
