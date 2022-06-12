@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Get RSVP data from dynamodb.
+Resources:
+  RSVPGet:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.8
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/lambda-dynamodb-role
+      Code:
+        ZipFile: >
+          import boto3
+
+          def handler(event, context):
+            client = boto3.client('dynamodb')
+            response = client.get_item(
+              TableName='rsvp',
+              Key={
+                'code': {
+                  'S': event['code'],
+                }
+              }
+            )
+            return response
+      Handler: index.handler
+
+      Description: Put RSVP data to dynamodb.
+  RSVPPut:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.8
+      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/lambda-dynamodb-role
+      Code:
+        ZipFile: >
+          import boto3
+
+          from botocore.exceptions import ClientError
+
+          import logging
+
+          logger = logging.getLogger(__name__)
+
+          def handler(event, context):
+            client = boto3.client('dynamodb')
+
+            rawItem = client.get_item(
+              TableName='rsvp',
+              Key={
+                'code': {
+                  'S': event['code'],
+                }
+              },
+              AttributesToGet=[
+                'limit',
+              ],
+            )
+
+            limit = int(rawItem['Item']['limit']['N'])
+            
+            rsvp = 0
+            if int(event.get('rsvp',0)) <= limit and event.get('rsvp',0) != 0:
+              int(event.get('rsvp'))
+
+            try:
+              response = client.update_item(
+                TableName='rsvp',
+                Key={
+                  'code': {
+                    'S': event['code'],
+                  },
+                },
+                AttributeUpdates={
+                  'address': {
+                    'Value': {
+                      'S': event.get('address',''),
+                    },
+                    'Action': 'PUT',
+                  },
+                  'addresstwo': {
+                    'Value':{
+                      'S': event.get('addresstwo',''),
+                    },
+                    'Action': 'PUT',
+                  },
+                  'city': {
+                    'Value': {
+                      'S': event.get('city',''),
+                    },
+                    'Action': 'PUT',
+                  },
+                  'country': {
+                    'Value': {
+                      'S': event.get('country',''),
+                    },
+                    'Action': 'PUT',
+                  },
+                  'email': {
+                    'Value': {
+                      'S': event.get('email',''),
+                    },
+                    'Action': 'PUT',
+                  },
+                  'hasrsvp': {
+                    'Value': {
+                      'BOOL': True,
+                    },
+                    'Action': 'PUT',
+                  },
+                  'rsvp': {
+                    'Value': {
+                      'N': str(rsvp),
+                    },
+                    'Action': 'PUT',
+                  },
+                  'state': {
+                    'Value': {
+                      'S': event.get('state',''),
+                    },
+                    'Action': 'PUT',
+                  },
+                  'zip': {
+                    'Value': {
+                      'S': event.get('zip',''),
+                    },
+                    'Action': 'PUT',
+                  },
+                },
+              )
+            except ClientError as err:
+              logger.error(
+                "unable to update record %s due to %s ... %s", event['code'], err.response['Error']['Code'], err.response['Error']['Message']
+              )
+              return {"status":400, "error":"unable to update record"}
+            else: 
+              return {'status':200}
+      Handler: index.handler
+
+      Description: Put RSVP data to dynamodb.
