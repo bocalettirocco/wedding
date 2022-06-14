@@ -10,20 +10,56 @@ Resources:
         ZipFile: >
           import boto3
 
+          from decimal import *
+
+          import json
+
+          from boto3.dynamodb.types import TypeDeserializer
+          
+          #json lib does not support Decimal
+
+          #so extending JSONEncoder to pass to json.Dumps
+          
+          class DecimalEncoder(json.JSONEncoder):
+            def default(self, obj):
+              if isinstance(obj, Decimal):
+                return str(obj)
+              return json.JSONEncoder.default(self, obj)
+                  
           def handler(event, context):
+            queryStringParams = event['queryStringParameters']
+
+            if queryStringParams.get('code','') == '':
+              return {"status":400, "error":"must provide rsvp code"}
+
             client = boto3.client('dynamodb')
             response = client.get_item(
               TableName='rsvp',
               Key={
                 'code': {
-                  'S': event['code'],
+                  'S': event['queryStringParameters']['code'],
                 }
               }
             )
-            return response
+
+            item = response.get('Item')
+            
+            deserializer = TypeDeserializer()
+            deserialized_data = {k: deserializer.deserialize(v) for k,v in item.items()}
+
+            message = {
+            'message': deserialized_data
+            }
+            
+            return {
+              'statusCode': 200,
+              'headers': {'Content-Type': 'application/json'},
+              'body': json.dumps(message, cls=DecimalEncoder)
+            }
       Handler: index.handler
 
-      Description: Put RSVP data to dynamodb.
+      Description: Get RSVP data from dynamodb.
+
   RSVPPut:
     Type: AWS::Lambda::Function
     Properties:
@@ -40,13 +76,18 @@ Resources:
           logger = logging.getLogger(__name__)
 
           def handler(event, context):
+            queryStringParams = event['queryStringParameters']
+
+            if queryStringParams.get('code','') == '':
+              return {"status":400, "error":"must provide rsvp code"}
+
             client = boto3.client('dynamodb')
 
             rawItem = client.get_item(
               TableName='rsvp',
               Key={
                 'code': {
-                  'S': event['code'],
+                  'S': queryStringParams.get('code'),
                 }
               },
               AttributesToGet=[
@@ -65,37 +106,37 @@ Resources:
                 TableName='rsvp',
                 Key={
                   'code': {
-                    'S': event['code'],
+                    'S': queryStringParams.get('code'),
                   },
                 },
                 AttributeUpdates={
                   'address': {
                     'Value': {
-                      'S': event.get('address',''),
+                      'S': queryStringParams.get('address',''),
                     },
                     'Action': 'PUT',
                   },
                   'addresstwo': {
                     'Value':{
-                      'S': event.get('addresstwo',''),
+                      'S': queryStringParams.get('addresstwo',''),
                     },
                     'Action': 'PUT',
                   },
                   'city': {
                     'Value': {
-                      'S': event.get('city',''),
+                      'S': queryStringParams.get('city',''),
                     },
                     'Action': 'PUT',
                   },
                   'country': {
                     'Value': {
-                      'S': event.get('country',''),
+                      'S': queryStringParams.get('country',''),
                     },
                     'Action': 'PUT',
                   },
                   'email': {
                     'Value': {
-                      'S': event.get('email',''),
+                      'S': queryStringParams.get('email',''),
                     },
                     'Action': 'PUT',
                   },
@@ -113,13 +154,13 @@ Resources:
                   },
                   'state': {
                     'Value': {
-                      'S': event.get('state',''),
+                      'S': queryStringParams.get('state',''),
                     },
                     'Action': 'PUT',
                   },
                   'zip': {
                     'Value': {
-                      'S': event.get('zip',''),
+                      'S': queryStringParams.get('zip',''),
                     },
                     'Action': 'PUT',
                   },
@@ -135,3 +176,111 @@ Resources:
       Handler: index.handler
 
       Description: Put RSVP data to dynamodb.
+
+  Gateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties: 
+      Name: RSVP
+      Description: "RSVP API"
+      FailOnWarnings: True
+      EndpointConfiguration:
+        Types: 
+        - REGIONAL
+
+  GatewayDeployment:
+    DependsOn: RSVPGetRequest
+    Type: AWS::ApiGateway::Deployment
+    Properties:
+      RestApiId: !Ref Gateway
+      StageName: Dummy
+
+  GatewayStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref GatewayDeployment
+      MethodSettings: 
+        - HttpMethod: "*"
+        - ResourcePath: "/*"
+      RestApiId: !Ref Gateway
+      StageName: "LATEST"
+
+  RSVPResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref Gateway
+      ParentId: !GetAtt Gateway.RootResourceId
+      PathPart: "rsvp"
+  
+  RSVPGetRequest:
+    DependsOn: PutPermission
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration: 
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn: !GetAtt RSVPGet.Arn
+        IntegrationResponses:
+          - StatusCode: 200
+      #   RequestTemplates:
+      #     "application/json": "{\n \"code\": \"$input.params('code')\"\n}"
+      # RequestParameters:
+      #   "method.request.querystring.code": False
+      ResourceId: !Ref RSVPResource
+      RestApiId: !Ref Gateway
+      MethodResponses:
+        - StatusCode: 200
+
+  RSVPPutRequest:
+    DependsOn: PutPermission
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: PUT
+      Integration: 
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn: !GetAtt RSVPPut.Arn
+        IntegrationResponses:
+          - StatusCode: 200
+      #   RequestTemplates:
+      #     "application/json": 
+      #       !Join
+      #       - ","
+      #       - - "{\n \"code\": \"$input.params('code')\""
+      #         - "\"address\": \"$input.params('address')\""
+      #         - "\"addresstwo\": \"$input.params('addresstwo')\""
+      #         - "\"city\": \"$input.params('city')\""
+      #         - "\"country\": \"$input.params('country')\""
+      #         - "\"email\": \"$input.params('email')\""
+      #         - "\"rsvp\": \"$input.params('rsvp')\""
+      #         - "\"state\": \"$input.params('LA')\""
+      #         - "\"zip\": \"$input.params('zip')\""
+      # RequestParameters:
+      #   "method.request.querystring.code": False
+      ResourceId: !Ref RSVPResource
+      RestApiId: !Ref Gateway
+      MethodResponses:
+        - StatusCode: 200
+
+  GetPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:invokeFunction"
+      FunctionName: !GetAtt RSVPGet.Arn
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Join ["", ["arn:aws:execute-api:", !Ref AWS::Region, ":", !Ref AWS::AccountId, ":", !Ref Gateway, "/*"]]
+
+  PutPermission:
+    DependsOn: GetPermission
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: "lambda:invokeFunction"
+      FunctionName: !GetAtt RSVPPut.Arn
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Join ["", ["arn:aws:execute-api:", !Ref AWS::Region, ":", !Ref AWS::AccountId, ":", !Ref Gateway, "/*"]]
