@@ -72,7 +72,7 @@ Resources:
       InstanceMonitoring: false
       InstanceType: t3.micro
       KeyName: linux
-      LaunchConfigurationName: wedding
+      LaunchConfigurationName: wedding-tmp
       SecurityGroups: 
         - !Ref EC2SecurityGroup
       UserData: !Base64 | 
@@ -104,7 +104,7 @@ Resources:
         printf "NEXT_PUBLIC_API_MAP_KEY=$NEXT_PUBLIC_API_MAP_KEY" > .env.local
 
         mv nginx/nginx.conf nginx/nginx.bak
-        cat nginx/nginx.bak | envsubst > nginx/nginx.conf
+        cat nginx/nginx.bak | envsubst '${NEXT_RSVP_KEY} ${NEXT_LAMBDA_URL}'
 
         docker-compose up -d
 
