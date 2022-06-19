@@ -85,6 +85,9 @@ Resources:
         export NEXT_PUBLIC_API_MAP_KEY=$(aws ssm get-parameter --region $REGION \
           --name "NEXT_PUBLIC_API_MAP_KEY" \
           --with-decryption | jq -r '.Parameter | .Value')
+        export NEXT_RSVP_KEY=$(aws ssm get-parameter --region $REGION \
+          --name "NEXT_RSVP_KEY" \
+          --with-decryption | jq -r '.Parameter | .Value')
         aws ssm get-parameter --region $REGION \
           --name "NEXT_WEDDING_CERT_KEY" \
           --with-decryption | jq -r '.Parameter | .Value' | base64 -d | gunzip > certs/www.erinandmario.bocaletti.com.key
