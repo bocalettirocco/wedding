@@ -74,25 +74,37 @@ Resources:
         - !Ref EC2SecurityGroup
       UserData: !Base64 | 
         #!/bin/bash
-        yum install -y docker git jq
+        yum install -y docker gettext git jq
         systemctl enable docker.service
         systemctl start docker.service
         curl -L https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
         sudo chmod +x /usr/local/bin/docker-compose
+
+        REGION=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
+        export WEDDING_RELEASE=$(aws ssm get-parameter --region $REGION \
+          --name "WEDDING_RELEASE" | jq -r '.Parameter | .Value')
         git clone https://github.com/bocalettirocco/wedding.git
         cd wedding
-        REGION=$(curl -s http://169.254.169.254/latest/dynamic/instance-identity/document | jq -r .region)
+        git checkout $WEDDING_RELEASE
+        
         export NEXT_PUBLIC_API_MAP_KEY=$(aws ssm get-parameter --region $REGION \
           --name "NEXT_PUBLIC_API_MAP_KEY" \
           --with-decryption | jq -r '.Parameter | .Value')
         export NEXT_RSVP_KEY=$(aws ssm get-parameter --region $REGION \
           --name "NEXT_RSVP_KEY" \
           --with-decryption | jq -r '.Parameter | .Value')
+        export NEXT_LAMBDA_URL=$(aws ssm get-parameter --region $REGION \
+          --name "NEXT_LAMBDA_URL" | jq -r '.Parameter | .Value')
         aws ssm get-parameter --region $REGION \
           --name "NEXT_WEDDING_CERT_KEY" \
           --with-decryption | jq -r '.Parameter | .Value' | base64 -d | gunzip > certs/www.erinandmario.bocaletti.com.key
         printf "NEXT_PUBLIC_API_MAP_KEY=$NEXT_PUBLIC_API_MAP_KEY" > .env.local
+
+        mv nginx/nginx.conf nginx/nginx.bak
+        cat nginx/nginx.bak | envsubst > nginx/nginx.conf
+
         docker-compose up -d
+
         /opt/aws/bin/cfn-signal --stack=wedding --resource=ASG
   DefaultTargetGroup:
     Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
