@@ -235,7 +235,7 @@ Resources:
         - HttpMethod: "*"
         - ResourcePath: "/*"
       RestApiId: !Ref Gateway
-      StageName: "LATEST"
+      StageName: "lambda"
 
   RSVPResource:
     Type: AWS::ApiGateway::Resource
