@@ -30,7 +30,11 @@ Resources:
             queryStringParams = event['queryStringParameters']
 
             if queryStringParams.get('code','') == '':
-              return {"status":400, "error":"must provide rsvp code"}
+              return {
+                'statusCode': 400,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({"error":"must provide rsvp code"})
+              }
 
             client = boto3.client('dynamodb')
             response = client.get_item(
@@ -42,8 +46,15 @@ Resources:
               }
             )
 
-            item = response.get('Item')
-            
+            item = response.get('Item','')
+            if item == '':
+              return {
+                'statusCode': 404,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({"error":"rsvp code not found"})
+              }
+
+
             deserializer = TypeDeserializer()
             deserialized_data = {k: deserializer.deserialize(v) for k,v in item.items()}
 
@@ -73,13 +84,19 @@ Resources:
 
           import logging
 
+          import json
+
           logger = logging.getLogger(__name__)
 
           def handler(event, context):
             queryStringParams = event['queryStringParameters']
 
             if queryStringParams.get('code','') == '':
-              return {"status":400, "error":"must provide rsvp code"}
+              return {
+                'statusCode': 400,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({"error":"must provide rsvp code"})
+              }
 
             client = boto3.client('dynamodb')
 
@@ -92,14 +109,23 @@ Resources:
               },
               AttributesToGet=[
                 'limit',
+                'rsvp',
               ],
             )
 
+            if rawItem.get('Item','') == '':
+              return {
+                'statusCode': 404,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({"error":"rsvp code not found"})
+              }
+
             limit = int(rawItem['Item']['limit']['N'])
             
-            rsvp = 0
-            if int(event.get('rsvp',0)) <= limit and event.get('rsvp',0) != 0:
-              int(event.get('rsvp'))
+            if int(queryStringParams.get('rsvp',0)) <= limit:
+              rsvp = queryStringParams.get('rsvp')
+            else:
+              rsvp = int(rawItem['Item']['rsvp']['N'])
 
             try:
               response = client.update_item(
@@ -168,11 +194,18 @@ Resources:
               )
             except ClientError as err:
               logger.error(
-                "unable to update record %s due to %s ... %s", event['code'], err.response['Error']['Code'], err.response['Error']['Message']
+                "unable to update record %s due to %s ... %s", queryStringParams.get('code'), err.response['Error']['Code'], err.response['Error']['Message']
               )
-              return {"status":400, "error":"unable to update record"}
+              return {
+              'statusCode': 400,
+              'headers': {'Content-Type': 'application/json'},
+              'body': json.dumps({"status":400, "error":"unable to update record"})
+            }
             else: 
-              return {'status':200}
+              return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json'}
+              }
       Handler: index.handler
 
       Description: Put RSVP data to dynamodb.
