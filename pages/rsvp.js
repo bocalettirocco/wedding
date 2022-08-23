@@ -18,7 +18,13 @@ export default function RSVP() {
           <h1 className={styles.title}>
             RSVP
           </h1>
-          <p className={styles.text}>Please check back soon for RSVP information.</p>       
+          <p className={styles.text}>
+            Please click
+            <Link href="https://withjoy.com/erin-and-mario/rsvp">
+              <a> here </a>
+            </Link>
+            to RSVP.
+          </p>       
         </main>
       </div>
     )
